@@ -61,6 +61,10 @@ class Settings:
     }
     TASK_MODEL = {"synthesize": "general", "extract": "json", "vision": "vision"}
 
+    # Speed optimizations
+    DEFAULT_NUM_PREDICT = int(os.getenv("DEFAULT_NUM_PREDICT", "2048"))  # Limit output tokens
+    KEEP_ALIVE = os.getenv("KEEP_ALIVE", "10m")  # Keep model loaded between requests
+
     # Prompts
     SYSTEM = {
         "chat": "You are a helpful assistant.",

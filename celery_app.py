@@ -81,10 +81,11 @@ TASK_OPTS = dict(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_
 # General queue tasks
 @app.task(name="task.generate", **TASK_OPTS)
 def generate(self, prompt: str, model: str = None, task: str = "synthesize",
-             temperature: float = 0.7, system: str = None, **kwargs):
+             temperature: float = 0.7, system: str = None, num_predict: int = None, **kwargs):
     """Text generation task."""
     return {"success": True, "response": client.infer(
-        prompt=prompt, task=task, model=model, temperature=temperature, system=system, **kwargs)}
+        prompt=prompt, task=task, model=model, temperature=temperature, system=system,
+        num_predict=num_predict, **kwargs)}
 
 
 @app.task(name="task.chat", **TASK_OPTS)
@@ -102,10 +103,11 @@ def structured(self, prompt: str, schema: dict, model: str = None, retries: int 
 
 
 @app.task(name="task.extract", **TASK_OPTS)
-def extract(self, prompt: str, model: str = None, temperature: float = 0.1, **kwargs):
-    """Data extraction task."""
+def extract(self, prompt: str, model: str = None, temperature: float = 0.1, num_predict: int = 2048, **kwargs):
+    """Data extraction task - limited output for speed."""
     return {"success": True, "response": client.infer(
-        prompt=prompt, task="extract", model=model, temperature=temperature, **kwargs)}
+        prompt=prompt, task="extract", model=model, temperature=temperature,
+        num_predict=num_predict, **kwargs)}
 
 
 # Vision queue tasks (longer timeout for slow inference)

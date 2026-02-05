@@ -5,6 +5,10 @@ import base64
 from typing import Generator, Any
 from config import get_model, get_system, settings
 
+# === Connection Pool (reuse TCP connections for speed) ===
+_session = requests.Session()
+_session.headers.update({"Content-Type": "application/json"})
+
 # === Helpers ===
 
 def _encode_image(path: str) -> str:
@@ -12,7 +16,7 @@ def _encode_image(path: str) -> str:
         return base64.b64encode(f.read()).decode()
 
 def _ollama(endpoint: str, payload: dict, stream: bool = False) -> requests.Response:
-    return requests.post(
+    return _session.post(
         f"{settings.OLLAMA_HOST}/api/{endpoint}",
         json={**payload, "stream": stream},
         stream=stream,
@@ -46,13 +50,21 @@ def infer(
     stream: bool = False,
     temperature: float = 0.7,
     system: str = None,
+    num_predict: int = None,  # Limit output tokens for speed
 ) -> str | Generator[str, None, None]:
     model = model or get_model(task) or settings.MODELS["general"]
+
+    # Build options with speed optimizations
+    options = {"temperature": temperature}
+    if num_predict:
+        options["num_predict"] = num_predict  # Limit output tokens
+
     payload = {
         "model": model,
         "prompt": prompt,
-        "options": {"temperature": temperature},
+        "options": options,
         "system": system or get_system(task),
+        "keep_alive": "10m",  # Keep model loaded for 10 min (faster subsequent calls)
     }
     if images:
         payload["images"] = [_encode_image(p) if not p.startswith("data:") else p.split(",")[1] for p in images]
@@ -73,7 +85,12 @@ def chat(messages: list[dict], model: str = None, stream: bool = False, system: 
     msgs = [{"role": "system", "content": system}] + messages if system else messages
 
     try:
-        r = _ollama("chat", {"model": model, "messages": msgs}, stream)
+        payload = {
+            "model": model,
+            "messages": msgs,
+            "keep_alive": "10m",  # Keep model loaded for faster subsequent calls
+        }
+        r = _ollama("chat", payload, stream)
         if stream:
             return _stream_response(r, "message")
         r.raise_for_status()
