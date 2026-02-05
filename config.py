@@ -53,7 +53,7 @@ class Settings:
     API_KEY = os.getenv("API_KEY", "")
     RATE_LIMIT = int(os.getenv("RATE_LIMIT", "300"))  # 300 requests per minute
 
-    # Models
+    # Models - defaults, but client can override via request
     MODELS = {
         "general": os.getenv("GENERAL_MODEL", "qwen2.5:32b"),
         "json": os.getenv("JSON_MODEL", "deepseek-coder-v2:16b"),
