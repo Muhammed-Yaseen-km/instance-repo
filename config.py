@@ -51,7 +51,7 @@ class Settings:
 
     # Auth & Rate limiting
     API_KEY = os.getenv("API_KEY", "")
-    RATE_LIMIT = int(os.getenv("RATE_LIMIT", "60"))
+    RATE_LIMIT = int(os.getenv("RATE_LIMIT", "300"))  # 300 requests per minute
 
     # Models
     MODELS = {

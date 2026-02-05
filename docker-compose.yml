@@ -1,69 +1,5 @@
-version: '3.8'
-
-# SINGLE GPU CONFIGURATION
-# Each queue gets 1 worker with concurrency=1
-# Total: 3 workers taking turns on 1 GPU (via Ollama)
-# For multiple GPUs, see docker-compose.multi-gpu.yml
-
 services:
-  api:
-    build: .
-    ports:
-      - "5000:5000"
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    volumes:
-      - ./data:/app/data
-    depends_on:
-      - redis
-    restart: unless-stopped
-
-  # Celery workers - one per queue, concurrency=1 (single GPU)
-  # Each queue processes independently - vision doesn't block text
-
-  worker-general:
-    build: .
-    command: python run_worker.py general
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    volumes:
-      - ./data:/app/data
-    depends_on:
-      - redis
-      - ollama
-    restart: unless-stopped
-
-  worker-json:
-    build: .
-    command: python run_worker.py json
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    volumes:
-      - ./data:/app/data
-    depends_on:
-      - redis
-      - ollama
-    restart: unless-stopped
-
-  worker-vision:
-    build: .
-    command: python run_worker.py vision
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    volumes:
-      - ./data:/app/data
-    depends_on:
-      - redis
-      - ollama
-    restart: unless-stopped
+  # === Core Services ===
 
   redis:
     image: redis:7-alpine
@@ -72,6 +8,11 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   ollama:
     image: ollama/ollama:latest
@@ -86,6 +27,109 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # === Model Puller (runs once on startup) ===
+  model-puller:
+    image: curlimages/curl:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - GENERAL_MODEL=${GENERAL_MODEL:-qwen2.5:7b}
+      - JSON_MODEL=${JSON_MODEL:-qwen2.5:7b}
+      - VISION_MODEL=${VISION_MODEL:-qwen2.5vl:7b}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Pulling models..."
+        curl -X POST http://ollama:11434/api/pull -d "{\"name\": \"$GENERAL_MODEL\"}" || true
+        curl -X POST http://ollama:11434/api/pull -d "{\"name\": \"$JSON_MODEL\"}" || true
+        curl -X POST http://ollama:11434/api/pull -d "{\"name\": \"$VISION_MODEL\"}" || true
+        echo "Models pulled!"
+    restart: "no"
+
+  # === API Server ===
+  api:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - GENERAL_MODEL=${GENERAL_MODEL:-qwen2.5:7b}
+      - JSON_MODEL=${JSON_MODEL:-qwen2.5:7b}
+      - VISION_MODEL=${VISION_MODEL:-qwen2.5vl:7b}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # === Celery Workers ===
+  worker-general:
+    build: .
+    command: python run_worker.py general --no-warmup
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - GENERAL_MODEL=${GENERAL_MODEL:-qwen2.5:7b}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker-json:
+    build: .
+    command: python run_worker.py json --no-warmup
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - JSON_MODEL=${JSON_MODEL:-qwen2.5:7b}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker-vision:
+    build: .
+    command: python run_worker.py vision --no-warmup
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - VISION_MODEL=${VISION_MODEL:-qwen2.5vl:7b}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
