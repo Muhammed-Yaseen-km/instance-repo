@@ -1,0 +1,93 @@
+version: '3.8'
+
+# SINGLE GPU CONFIGURATION
+# Each queue gets 1 worker with concurrency=1
+# Total: 3 workers taking turns on 1 GPU (via Ollama)
+# For multiple GPUs, see docker-compose.multi-gpu.yml
+
+services:
+  api:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # Celery workers - one per queue, concurrency=1 (single GPU)
+  # Each queue processes independently - vision doesn't block text
+
+  worker-general:
+    build: .
+    command: python run_worker.py general
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - redis
+      - ollama
+    restart: unless-stopped
+
+  worker-json:
+    build: .
+    command: python run_worker.py json
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - redis
+      - ollama
+    restart: unless-stopped
+
+  worker-vision:
+    build: .
+    command: python run_worker.py vision
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - redis
+      - ollama
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  ollama_data:
