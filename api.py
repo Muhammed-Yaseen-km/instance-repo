@@ -35,11 +35,16 @@ async def auth(request: Request):
 
 async def rate_limit(request: Request):
     if settings.RATE_LIMIT:
-        now, ip = time.time(), request.client.host
-        _requests[ip] = [t for t in _requests[ip] if now - t < 60]
-        if len(_requests[ip]) >= settings.RATE_LIMIT:
+        now = time.time()
+        # Rate limit by API key (not IP) - works correctly behind Cloudflare tunnel
+        # All tunnel traffic appears as same IP, so IP-based limiting breaks
+        api_key = request.headers.get("Authorization", "").replace("Bearer ", "")
+        key = api_key[:16] if api_key else request.client.host  # Fallback to IP if no key
+
+        _requests[key] = [t for t in _requests[key] if now - t < 60]
+        if len(_requests[key]) >= settings.RATE_LIMIT:
             raise HTTPException(429, "Rate limit exceeded")
-        _requests[ip].append(now)
+        _requests[key].append(now)
 
 # === Models ===
 
