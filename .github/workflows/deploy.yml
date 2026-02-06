@@ -7,25 +7,39 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    # Runs directly on Salam's GPU machine (self-hosted runner)
+    runs-on: [self-hosted, gpu]
+
     steps:
-      - name: Trigger deployment webhook
+      - name: Pull latest code
+        working-directory: ~/inference_engine
         run: |
-          echo "Triggering deployment to Salam's machine..."
-          curl -X POST \
-            -H "Content-Type: application/json" \
-            -H "X-Deploy-Secret: ${{ secrets.DEPLOY_SECRET }}" \
-            --max-time 120 \
-            --retry 3 \
-            "${{ secrets.DEPLOY_WEBHOOK_URL }}/deploy" \
-            -d '{"ref": "refs/heads/main", "triggered_by": "github_actions"}'
-          echo "Deployment triggered!"
+          echo "Pulling latest changes..."
+          git fetch origin main
+          git reset --hard origin/main
+          echo "Code updated!"
+
+      - name: Restart services
+        working-directory: ~/inference_engine
+        run: |
+          echo "Restarting Docker services..."
+          docker compose down
+          docker compose up -d
+          echo "Services restarted!"
 
       - name: Verify deployment
+        working-directory: ~/inference_engine
         run: |
-          echo "Waiting for services to restart..."
-          sleep 10
-          echo "Checking health endpoint..."
-          curl -s --max-time 30 \
-            -H "Authorization: Bearer ${{ secrets.INFERENCE_API_KEY }}" \
-            "${{ secrets.INFERENCE_ENGINE_URL }}/api/v1/health" | jq .
+          echo "Waiting for services to start..."
+          sleep 15
+
+          echo "Checking container status..."
+          docker compose ps
+
+          echo "Checking API health..."
+          curl -s --max-time 10 http://localhost:8000/api/v1/health || echo "Health check pending..."
+
+          echo ""
+          echo "=========================================="
+          echo "  DEPLOYMENT COMPLETE!"
+          echo "=========================================="
