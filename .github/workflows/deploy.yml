@@ -1,0 +1,31 @@
+name: Deploy to Inference Engine
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deployment webhook
+        run: |
+          echo "Triggering deployment to Salam's machine..."
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Deploy-Secret: ${{ secrets.DEPLOY_SECRET }}" \
+            --max-time 120 \
+            --retry 3 \
+            "${{ secrets.DEPLOY_WEBHOOK_URL }}/deploy" \
+            -d '{"ref": "refs/heads/main", "triggered_by": "github_actions"}'
+          echo "Deployment triggered!"
+
+      - name: Verify deployment
+        run: |
+          echo "Waiting for services to restart..."
+          sleep 10
+          echo "Checking health endpoint..."
+          curl -s --max-time 30 \
+            -H "Authorization: Bearer ${{ secrets.INFERENCE_API_KEY }}" \
+            "${{ secrets.INFERENCE_ENGINE_URL }}/api/v1/health" | jq .
