@@ -1,24 +1,21 @@
 # Automation Scripts
 
-All deployment and setup scripts in one place.
+All deployment scripts in one place.
+
+## Usage (Salam's Machine)
+
+When notified of changes:
+```bash
+cd ~/inference_engine/automation
+./deploy.sh
+```
 
 ## Scripts
 
 | Script | Purpose |
 |--------|---------|
-| `setup-runner.sh` | **One-time setup** - installs GitHub Actions runner on Salam's machine |
-| `setup_instance.sh` | Initial server setup (Docker, dependencies) |
-| `deploy.sh` | Manual deploy script |
+| `deploy.sh` | Pull latest code + restart services |
+| `setup_instance.sh` | Initial server setup |
+| `setup-runner.sh` | GitHub runner setup (optional) |
 | `test_api.sh` | Test API endpoints |
 | `run_worker.py` | Run Celery worker manually |
-| `push_and_deploy.bat` | Windows batch for push + deploy |
-
-## Quick Start (Salam's Machine)
-
-```bash
-cd ~/inference_engine/automation
-chmod +x setup-runner.sh
-./setup-runner.sh
-```
-
-After this one command, every `git push` to main auto-deploys.
