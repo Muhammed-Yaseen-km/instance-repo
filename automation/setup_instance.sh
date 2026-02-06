@@ -1,44 +1,73 @@
 #!/bin/bash
-# AWS GPU Instance Setup Script for Inference Engine
-# Run this after SSH'ing into your instance
+# GPU Instance Setup Script for Inference Engine
+# Run this ONCE on Salam's machine to set up everything
 
-set -e  # Exit on error
+set -e
 
-echo "=== Step 1: Installing Docker ==="
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
+echo "=========================================="
+echo "  Inference Engine - Initial Setup"
+echo "=========================================="
 
-echo "=== Step 2: Installing NVIDIA Container Toolkit ==="
-# Add NVIDIA repo
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+# Step 1: Install Docker
+echo ""
+echo "[1/5] Installing Docker..."
+if ! command -v docker &> /dev/null; then
+    curl -fsSL https://get.docker.com | sh
+    sudo usermod -aG docker $USER
+    echo "Docker installed. You may need to log out and back in."
+else
+    echo "Docker already installed"
+fi
 
-sudo apt-get update
-sudo apt-get install -y nvidia-container-toolkit
+# Step 2: Install NVIDIA Container Toolkit
+echo ""
+echo "[2/5] Installing NVIDIA Container Toolkit..."
+if ! dpkg -l | grep -q nvidia-container-toolkit; then
+    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+    curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+        sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+        sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+    sudo apt-get update
+    sudo apt-get install -y nvidia-container-toolkit
+    sudo nvidia-ctk runtime configure --runtime=docker
+    sudo systemctl restart docker
+else
+    echo "NVIDIA toolkit already installed"
+fi
 
-# Configure Docker to use NVIDIA runtime
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
-
-echo "=== Step 3: Cloning Repository ==="
+# Step 3: Clone Repository
+echo ""
+echo "[3/5] Setting up repository..."
 cd ~
-git clone https://github.com/Muhammed-Yaseen-km/instance-repo.git inference_engine
+if [ ! -d "inference_engine" ]; then
+    git clone https://github.com/Muhammed-Yaseen-km/instance-repo.git inference_engine
+else
+    echo "Repository already exists"
+fi
 cd inference_engine
 
-echo "=== Step 4: Creating .env file ==="
-cp .env.example .env
+# Step 4: Setup environment
+echo ""
+echo "[4/5] Setting up environment..."
+if [ ! -f ".env" ]; then
+    cp .env.example .env
+    echo "Created .env from example. Edit it with your settings."
+else
+    echo ".env already exists"
+fi
 
-echo "=== Step 5: Starting Services ==="
-sudo docker-compose up -d
-
-echo "=== Step 6: Checking GPU ==="
-nvidia-smi
+# Step 5: Start services
+echo ""
+echo "[5/5] Starting services..."
+docker compose up -d
 
 echo ""
-echo "=== SETUP COMPLETE ==="
-echo "API running at: http://$(curl -s ifconfig.me):5000"
+echo "=========================================="
+echo "  SETUP COMPLETE!"
+echo "=========================================="
 echo ""
-echo "Test with: curl http://localhost:5000/api/v1/health"
-echo "View logs: sudo docker-compose logs -f"
+echo "Verify with:"
+echo "  nvidia-smi"
+echo "  docker compose ps"
+echo "  curl http://localhost:8000/api/v1/health"
+echo ""
