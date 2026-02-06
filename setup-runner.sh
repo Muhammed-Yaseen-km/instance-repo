@@ -1,79 +1,97 @@
 #!/bin/bash
 # ============================================
-# ONE-TIME SETUP: GitHub Actions Self-Hosted Runner
-# Run this ONCE on Salam's machine - after that, everything is automated
+# FULLY AUTOMATED: GitHub Actions Self-Hosted Runner
+# Just run: ./setup-runner.sh
 # ============================================
 
 set -e
 
 echo "=========================================="
-echo "  Inference Engine - Self-Hosted Runner Setup"
+echo "  Inference Engine - Automated Runner Setup"
 echo "=========================================="
 
 # Configuration
 RUNNER_DIR="$HOME/actions-runner"
-REPO_URL="https://github.com/Muhammed-Yaseen-km/instance-repo"
+REPO="Muhammed-Yaseen-km/instance-repo"
 WORK_DIR="$HOME/inference_engine"
 
-# Check if runner token is provided
-if [ -z "$1" ]; then
-    echo ""
-    echo "ERROR: Runner registration token required!"
-    echo ""
-    echo "To get the token:"
-    echo "1. Go to: $REPO_URL/settings/actions/runners/new"
-    echo "2. Copy the token from the configuration command"
-    echo ""
-    echo "Usage: ./setup-runner.sh <RUNNER_TOKEN>"
-    echo ""
+# Step 1: Check/Install GitHub CLI
+echo ""
+echo "[1/7] Checking GitHub CLI..."
+if ! command -v gh &> /dev/null; then
+    echo "Installing GitHub CLI..."
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+    sudo apt update && sudo apt install gh -y
+fi
+echo "✓ GitHub CLI installed"
+
+# Step 2: Authenticate with GitHub (if needed)
+echo ""
+echo "[2/7] Checking GitHub authentication..."
+if ! gh auth status &> /dev/null; then
+    echo "Please authenticate with GitHub:"
+    gh auth login
+fi
+echo "✓ Authenticated with GitHub"
+
+# Step 3: Get runner registration token automatically
+echo ""
+echo "[3/7] Getting runner registration token..."
+RUNNER_TOKEN=$(gh api -X POST "repos/${REPO}/actions/runners/registration-token" --jq '.token')
+if [ -z "$RUNNER_TOKEN" ]; then
+    echo "ERROR: Failed to get runner token. Make sure you have admin access to the repo."
     exit 1
 fi
+echo "✓ Token retrieved"
 
-RUNNER_TOKEN="$1"
-
+# Step 4: Download runner
 echo ""
-echo "[1/6] Creating runner directory..."
+echo "[4/7] Downloading GitHub Actions Runner..."
 mkdir -p "$RUNNER_DIR"
 cd "$RUNNER_DIR"
 
-echo ""
-echo "[2/6] Downloading GitHub Actions Runner..."
 RUNNER_VERSION="2.321.0"
-curl -o actions-runner-linux-x64.tar.gz -L \
-    "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
+if [ ! -f "run.sh" ]; then
+    curl -sL -o actions-runner.tar.gz \
+        "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
+    tar xzf actions-runner.tar.gz
+    rm actions-runner.tar.gz
+fi
+echo "✓ Runner downloaded"
 
+# Step 5: Configure runner
 echo ""
-echo "[3/6] Extracting runner..."
-tar xzf actions-runner-linux-x64.tar.gz
-rm actions-runner-linux-x64.tar.gz
+echo "[5/7] Configuring runner..."
+./config.sh --url "https://github.com/${REPO}" \
+    --token "$RUNNER_TOKEN" \
+    --name "salam-gpu-$(hostname)" \
+    --labels "self-hosted,gpu,inference" \
+    --work "_work" \
+    --unattended \
+    --replace
 
-echo ""
-echo "[4/6] Configuring runner..."
-./config.sh --url "$REPO_URL" --token "$RUNNER_TOKEN" --name "salam-gpu" --labels "gpu,inference" --work "_work" --unattended
+echo "✓ Runner configured"
 
+# Step 6: Install as service
 echo ""
-echo "[5/6] Installing runner as system service..."
-sudo ./svc.sh install
+echo "[6/7] Installing as system service..."
+sudo ./svc.sh install || true
 sudo ./svc.sh start
+echo "✓ Service started"
 
+# Step 7: Verify
 echo ""
-echo "[6/6] Verifying setup..."
+echo "[7/7] Verifying setup..."
 sudo ./svc.sh status
 
 echo ""
 echo "=========================================="
-echo "  SETUP COMPLETE!"
+echo "  ✅ FULLY AUTOMATED SETUP COMPLETE!"
 echo "=========================================="
 echo ""
-echo "The runner is now:"
-echo "  ✓ Registered with GitHub"
-echo "  ✓ Running as a system service"
-echo "  ✓ Will auto-start on boot"
-echo ""
-echo "From now on, any push to main will:"
-echo "  1. Trigger GitHub Actions"
-echo "  2. Run directly on THIS machine"
-echo "  3. Pull code + restart services automatically"
-echo ""
-echo "NO manual intervention needed ever again!"
+echo "From now on, every 'git push' to main will:"
+echo "  → Automatically pull code to this machine"
+echo "  → Automatically restart Docker services"
+echo "  → Zero manual intervention needed"
 echo ""
